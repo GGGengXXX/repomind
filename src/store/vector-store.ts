@@ -8,10 +8,11 @@ import { config } from '../config/config.js';
  * 封装 ChromaDB 操作
  */
 export class VectorStore {
-  private client: ChromaClient;
-  private collection: Collection | null = null;
-  private collectionName: string;
+  private client: ChromaClient; // ChromaDB 客户端
+  private collection: Collection | null = null; // ChromaDB Collection 实例 是数据集合
+  private collectionName: string; // 数据集合的名称 
 
+  // 类构造器
   constructor(collectionName: string = 'repomind-code') {
     this.collectionName = collectionName;
     this.client = new ChromaClient({
@@ -94,7 +95,7 @@ export class VectorStore {
   async query(
     queryEmbedding: number[],
     topK: number = 5,
-    filter?: Record<string, string | number>
+    filter?: Record<string, string | number | object>
   ): Promise<QueryResult[]> {
     if (!this.collection) {
       throw new Error('VectorStore 未初始化');
@@ -132,11 +133,38 @@ export class VectorStore {
       throw new Error('VectorStore 未初始化');
     }
 
-    await this.collection.delete({
-      where: {}, // 删除所有
-    });
+    // ChromaDB v2 API 不支持 where: {}，需要先获取所有 ID 再删除
+    const allItems = await this.collection.get({ limit: 1000 });
+    if (allItems.ids && allItems.ids.length > 0) {
+      await this.collection.delete({
+        ids: allItems.ids,
+      });
+    }
 
     console.log(`✓ 已清空向量库`);
+  }
+
+  /**
+   * 重置 Collection（删除并重新创建）
+   * 用于重新索引场景
+   */
+  async reset(): Promise<void> {
+    try {
+      // 尝试删除 Collection
+      await this.client.deleteCollection({ name: this.collectionName });
+      console.log(`✓ 已删除旧 Collection`);
+    } catch (error) {
+      // 如果不存在，忽略错误
+    }
+
+    // 重新创建
+    this.collection = await this.client.createCollection({
+      name: this.collectionName,
+      metadata: {
+        'hnsw:space': 'cosine',
+      },
+    });
+    console.log(`✓ 向量库 Collection 已重建：${this.collectionName}`);
   }
 
   /**

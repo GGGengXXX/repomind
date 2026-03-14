@@ -6,7 +6,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 // 从环境变量读取配置
 export const config = {
-  // 阿里百炼 API 配置
+  // 阿里百炼 API 配置（用于 LLM）
   dashscope: {
     apiKey: process.env.DASHSCOPE_API_KEY || '',
     baseURL: process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -15,6 +15,11 @@ export const config = {
   model: {
     llm: process.env.LLM_MODEL || 'qwen3.5-plus',
     embedding: process.env.EMBEDDING_MODEL || 'text-embedding-v3',
+  },
+  // Embedding API 配置（独立配置，支持 Ollama）
+  embedding: {
+    apiKey: process.env.EMBEDDING_API_KEY || process.env.DASHSCOPE_API_KEY || '',
+    baseURL: process.env.EMBEDDING_BASE_URL || process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   },
   // ChromaDB 配置（暂时用不到）
   chroma: {
@@ -31,4 +36,5 @@ export function validateConfig(): void {
   console.log('✓ 配置加载成功');
   console.log(`  - LLM 模型：${config.model.llm}`);
   console.log(`  - Embedding 模型：${config.model.embedding}`);
+  console.log(`  - Embedding API: ${config.embedding.baseURL}`);
 }

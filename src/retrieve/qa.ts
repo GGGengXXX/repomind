@@ -83,11 +83,12 @@ export class RetrieveQAService {
    * @param topK 返回结果数量
    * @returns 检索结果
    */
-  async retrieve(question: string, topK: number = 5): Promise<RetrievalResult> {
-    console.log(`\\n🔍 正在检索相关代码...`);
+  async retrieve(question: string, topK: number = 15): Promise<RetrievalResult> {
+    console.log(`\n🔍 正在检索相关代码...`);
+    console.log(`   问题：${question}`);
 
     // 生成问题的 Embedding
-    const embedding = await this.embeddingService.embedChunks({
+    const embedding = await this.embeddingService.embedChunk({
       id: 'query',
       filePath: '',
       content: question,
@@ -97,10 +98,29 @@ export class RetrieveQAService {
       metadata: {},
     });
 
-    // 查询向量库
-    const queryResults = await this.vectorStore.query(embedding, topK);
+    // 查询向量库 - 过滤掉 Markdown 的 text 类型，只检索代码内容
+    // type: 'function' | 'method' | 'class' | 'module' 是代码，type: 'text' 是 Markdown 段落
+    const queryResults = await this.vectorStore.query(
+      embedding,
+      topK,
+      // 使用 $ne 排除 type 为 'text' 的文档
+      { type: { $ne: 'text' } as any }
+    );
 
     console.log(`✓ 找到 ${queryResults.length} 个相关代码片段`);
+
+    // 调试打印：显示所有检索结果
+    console.log('\n📋 检索结果详情:');
+    queryResults.forEach((result, index) => {
+      const metadata = result.metadata || {};
+      const filePath = metadata.filePath as string || 'unknown';
+      const startLine = metadata.startLine as number || 0;
+      const endLine = metadata.endLine as number || 0;
+      const distance = result.distance || 0;
+      console.log(`  [${index + 1}] ${filePath}:${startLine}-${endLine}`);
+      console.log(`      距离：${distance.toFixed(4)} (相关性：${((1 - distance) * 100).toFixed(1)}%)`);
+    });
+    console.log('');
 
     return {
       queryResults,
@@ -118,7 +138,19 @@ export class RetrieveQAService {
       return '未检索到相关代码片段';
     }
 
-    const contextParts = queryResults.map((result, index) => {
+    // 去重：使用 filePath + startLine + endLine 作为唯一键
+    const seen = new Set<string>();
+    const uniqueResults = queryResults.filter((result) => {
+      const metadata = result.metadata || {};
+      const key = `${metadata.filePath}:${metadata.startLine}-${metadata.endLine}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
+    const contextParts = uniqueResults.map((result, index) => {
       const metadata = result.metadata || {};
       const filePath = metadata.filePath as string || 'unknown';
       const startLine = metadata.startLine as number || 0;
@@ -130,7 +162,7 @@ ${result.document}
 ---`;
     });
 
-    return contextParts.join('\\n\\n');
+    return contextParts.join('\n\n');
   }
 
   /**
@@ -139,16 +171,27 @@ ${result.document}
    * @returns 引用源数组
    */
   private extractSources(queryResults: QueryResult[]): Source[] {
-    return queryResults.map((result) => {
+    // 去重：使用 filePath + startLine + endLine 作为唯一键
+    const seen = new Set<string>();
+    const sources: Source[] = [];
+
+    for (const result of queryResults) {
       const metadata = result.metadata || {};
-      return {
-        filePath: metadata.filePath as string || 'unknown',
-        startLine: metadata.startLine as number || 0,
-        endLine: metadata.endLine as number || 0,
-        content: result.document,
-        relevanceScore: 1 - result.distance, // 距离越小，相关性越高
-      };
-    });
+      const key = `${metadata.filePath}:${metadata.startLine}-${metadata.endLine}`;
+
+      if (!seen.has(key)) {
+        seen.add(key);
+        sources.push({
+          filePath: metadata.filePath as string || 'unknown',
+          startLine: metadata.startLine as number || 0,
+          endLine: metadata.endLine as number || 0,
+          content: result.document,
+          relevanceScore: 1 - result.distance,
+        });
+      }
+    }
+
+    return sources;
   }
 
   /**
@@ -160,7 +203,7 @@ ${result.document}
   private async callLLM(question: string, context: string): Promise<string> {
     const prompt = PROMPT_TEMPLATE.replace('{context}', context).replace('{question}', question);
 
-    console.log(`\\n💬 正在生成回答...`);
+    console.log(`\n💬 正在生成回答...`);
 
     const response = await this.client.chat.completions.create({
       model: config.model.llm,
@@ -186,7 +229,7 @@ ${result.document}
    * @param topK 检索结果数量
    * @returns 回答结果
    */
-  async ask(question: string, topK: number = 5): Promise<AnswerResult> {
+  async ask(question: string, topK: number = 15): Promise<AnswerResult> {
     // 检索相关代码
     const retrievalResult = await this.retrieve(question, topK);
 
@@ -214,17 +257,17 @@ ${result.document}
   formatAnswerWithSources(answerResult: AnswerResult): string {
     const { answer, sources } = answerResult;
 
-    let output = '\\n📋 回答:\\n';
-    output += '─'.repeat(50) + '\\n';
-    output += answer + '\\n';
-    output += '─'.repeat(50) + '\\n';
+    let output = '\n📋 回答:\n';
+    output += '─'.repeat(50) + '\n';
+    output += answer + '\n';
+    output += '─'.repeat(50) + '\n';
 
     if (sources.length > 0) {
-      output += '\\n📚 引用源:\\n';
+      output += '\n📚 引用源:\n';
       sources.forEach((source, index) => {
-        output += `\\n[${index + 1}] ${source.filePath}:${source.startLine}-${source.endLine}`;
-        output += `\\n    相关性：${(source.relevanceScore * 100).toFixed(1)}%`;
-        output += `\\n    内容预览：${source.content.substring(0, 100).replace(/\\n/g, ' ')}...`;
+        output += `\n[${index + 1}] ${source.filePath}:${source.startLine}-${source.endLine}`;
+        output += `\n    相关性：${(source.relevanceScore * 100).toFixed(1)}%`;
+        output += `\n    内容预览：${source.content.substring(0, 100).replace(/\n/g, ' ')}...`;
       });
     }
 

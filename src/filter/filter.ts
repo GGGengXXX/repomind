@@ -51,6 +51,7 @@ const EXCLUDED_EXTENSIONS = [
   '.bin',
   '.db',
   '.sqlite',
+  '.sqlite3',
   '.lock',
 ];
 
@@ -91,8 +92,7 @@ const CODE_EXTENSIONS = [
   '.zsh',
   '.fish',
   '.ps1',
-  '.md',
-  '.txt',
+  // 配置文件
   '.json',
   '.yaml',
   '.yml',
@@ -100,8 +100,7 @@ const CODE_EXTENSIONS = [
   '.ini',
   '.cfg',
   '.conf',
-  '.xml',
-  '.html',
+  // 样式文件
   '.css',
   '.scss',
   '.sass',
@@ -109,6 +108,7 @@ const CODE_EXTENSIONS = [
   '.vue',
   '.svelte',
   '.astro',
+  // 其他代码相关
   '.sql',
   '.graphql',
   '.gql',
@@ -118,7 +118,6 @@ const CODE_EXTENSIONS = [
   'dockerfile',
   'docker-compose.yml',
   'docker-compose.yaml',
-  'makefile',
   'makefile',
   'cmakelists.txt',
   'cargo.toml',
@@ -135,11 +134,6 @@ const CODE_EXTENSIONS = [
   '.eslintrc.json',
   '.prettierrc',
   'prettier.config.js',
-  'README',
-  'README.md',
-  'CHANGELOG',
-  'LICENSE',
-  'CONTRIBUTING',
 ];
 
 export interface FileInfo {
@@ -197,6 +191,12 @@ async function scanDirectory(
       // 跳过排除的扩展名
       const ext = path.extname(entry.name).toLowerCase();
       if (EXCLUDED_EXTENSIONS.includes(ext)) {
+        continue;
+      }
+
+      // 只保留 CODE_EXTENSIONS 中的文件类型（白名单）
+      const fileName = entry.name.toLowerCase();
+      if (!CODE_EXTENSIONS.includes(ext) && !CODE_EXTENSIONS.includes(fileName)) {
         continue;
       }
 

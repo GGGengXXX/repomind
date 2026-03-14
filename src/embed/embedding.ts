@@ -26,8 +26,8 @@ export class EmbeddingService {
 
   constructor() {
     this.client = new OpenAI({
-      apiKey: config.dashscope.apiKey,
-      baseURL: config.dashscope.baseURL,
+      apiKey: config.embedding.apiKey,
+      baseURL: config.embedding.baseURL,
     });
   }
 
